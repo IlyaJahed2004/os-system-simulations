@@ -1,133 +1,134 @@
-# Phase 1 — L1 Cache Only
+# Memory Hierarchy Simulator (L1, L2, Main Memory, Virtual Memory)
 
-## Goal
-Implement L1 cache lookup and basic statistics (L1 hits, L1 misses) using the provided template.
+## Overview
+This project implements a simplified but realistic **memory hierarchy simulator** in C, modeling
+the behavior and performance of a modern computer memory system.
 
-## What this phase includes
-- Direct-mapped L1 cache lookup (index = address % CACHE_L1_SIZE).
-- Update L1 hit/miss counters.
-- Account L1 access time for each access.
-- Keep the rest of the memory hierarchy untouched for now.
+The simulator demonstrates how memory accesses propagate through multiple levels of storage,
+including **L1 cache, L2 cache, main memory (RAM), and virtual memory**, while collecting
+performance statistics such as cache hits, misses, page faults, and average access time.
 
-
-# Phase 2 — Two-Level Cache Simulation (L1 + L2)
-
-## Introduction
-This phase extends the memory hierarchy simulator by introducing a second cache level (L2).
-The goal is to model and analyze the behavior of a two-level cache hierarchy and understand
-how L2 cache improves performance when L1 cache misses occur.
-
-This phase builds directly on Phase 1 (L1-only cache) and preserves the same direct-mapped
-cache structure while adding a new level of indirection and performance measurement.
+The goal of this project is educational: to clearly illustrate **locality, cache efficiency,
+miss penalties, and page fault behavior** using a clean and understandable implementation.
 
 ---
 
-## Memory Hierarchy Overview
+## Memory Hierarchy Model
 
-CPU → L1 Cache → L2 Cache
+CPU
+
+↓
+
+L1 Cache (32 blocks, 1 cycle)
+
+↓
+
+L2 Cache (256 blocks, 10 cycles)
+
+↓
+
+Main Memory (1024 blocks, 100 cycles)
+
+↓
+
+Virtual Memory (4096 blocks, 1000 cycles)
 
 
-### Cache Configuration
-| Level | Size (blocks) | Mapping | Access Time |
-|------|---------------|--------|-------------|
-| L1   | 32            | Direct-mapped | 1 cycle |
-| L2   | 256           | Direct-mapped | 10 cycles |
+---
+
+## Cache and Memory Configuration
+
+| Level            | Size (Blocks) | Mapping         | Access Time |
+|------------------|---------------|-----------------|-------------|
+| L1 Cache         | 32            | Direct-mapped   | 1 cycle     |
+| L2 Cache         | 256           | Direct-mapped   | 10 cycles   |
+| Main Memory      | 1024          | Direct-mapped   | 100 cycles  |
+| Virtual Memory   | 4096          | Direct-mapped   | 1000 cycles |
 
 ---
 
 ## Address Mapping
-Both cache levels use a direct-mapped indexing scheme:
+All cache and memory levels use a **direct-mapped indexing scheme**:
 
-- **L1 index** = `address % CACHE_L1_SIZE`
-- **L2 index** = `address % CACHE_L2_SIZE`
+- **Index = address % size**
 
-This simplified mapping allows a clear demonstration of:
-- Conflict misses
-- Cache promotion effects
-- Performance differences between cache levels
+The full address is stored as a simplified tag to detect hits and misses.
+This abstraction keeps the implementation readable while preserving realistic behavior.
 
 ---
 
 ## Memory Access Algorithm
-For each memory access, the simulator follows the steps below:
 
-1. **L1 Lookup**
-   - If the block is present and valid → **L1 hit**
-   - Access completes in **1 cycle**
+For each memory access, the simulator performs the following steps:
 
-2. **L1 Miss Handling**
-   - L1 miss counter is incremented
-   - L2 cache is probed
+1. **L1 Cache Lookup**
+   - If the block is valid and the address matches → **L1 hit**
+   - Access completes in 1 cycle
 
-3. **L2 Lookup**
-   - L2 access latency (**10 cycles**) is added
-   - If the block is found → **L2 hit**
+2. **L1 Miss → L2 Cache Lookup**
+   - L2 access latency (10 cycles) is added
+   - On a hit, the block is promoted to L1 (write-allocate)
 
-4. **L2 Hit Handling**
-   - L2 hit counter is incremented
-   - The block is promoted to L1 (write-allocate policy)
-   - Total access time: **11 cycles**
+3. **L2 Miss → Main Memory Lookup**
+   - Main memory access latency (100 cycles) is added
+   - If the block is resident, it is loaded into L2 and L1
 
-5. **L2 Miss Handling**
-   - L2 miss counter is incremented
-   - The block is inserted into both L2 and L1
-   - Lower memory levels are abstracted away in this phase
+4. **Main Memory Miss → Page Fault**
+   - Data is fetched from virtual memory (1000 cycles)
+   - The page is installed into main memory
+   - The block is then promoted to L2 and L1
+
+This process models the **increasing miss penalty** across deeper levels of the hierarchy.
 
 ---
 
-## Cache Update Policy
-- **Write-Allocate**: On an L2 hit, the block is copied into L1.
-- **Direct Replacement**: Because the caches are direct-mapped, each new block overwrites
-  the existing block at the computed index.
-- **Write Model**: Data is updated in the cache after each access (simplified write-through behavior).
+## Cache Policies
 
----
-
-## Performance Metrics
-The simulator collects the following statistics:
-
-- `L1 Hits`
-- `L1 Misses`
-- `L2 Hits`
-- `L2 Misses`
-- `Average Memory Access Time`
-
-These metrics allow analysis of:
-- Effectiveness of L1 cache
-- Performance benefit introduced by the L2 cache
-- Impact of locality on cache behavior
+- **Mapping:** Direct-mapped at all levels
+- **Write Policy:** Write-allocate with simplified write-through behavior
+- **Replacement Policy:** Direct replacement (implicit due to direct mapping)
+- **Promotion:** On a hit at a lower level, blocks are promoted upward
 
 ---
 
 ## Experimental Setup
-- Number of memory accesses: **1000**
-- Working set size: **256 addresses**
-- Access pattern: Random accesses with temporal locality
 
-This setup is designed to:
-- Generate a mix of L1 hits, L2 hits, and misses
-- Demonstrate the performance role of L2 cache
+- **Number of memory accesses:** 1000
+- **Working set size:** 256 addresses
+- **Access pattern:**
+  - 90% of accesses target the working set (high locality)
+  - 10% of accesses are random across virtual memory
 
----
-
-## Sample Observations
-Typical outcomes from this phase include:
-- A noticeable reduction in average access time compared to Phase 1
-- High L2 hit rate after initial cold misses
-- Improved overall cache efficiency due to block promotion from L2 to L1
+This setup highlights:
+- Cache warm-up behavior
+- The performance benefit of L2 cache
+- The cost of page faults
 
 ---
 
-## Limitations
-This phase intentionally simplifies certain aspects of real systems:
-- No main memory or virtual memory simulation
-- No cache replacement policies beyond direct mapping
-- No dirty bits or write-back mechanism
+## Collected Metrics
 
-These aspects are introduced in subsequent phases.
+The simulator reports:
+
+- L1 cache hits and misses
+- L2 cache hits and misses
+- Number of page faults
+- Total memory access time
+- Average memory access time (AMAT)
+
+These metrics allow quantitative analysis of cache effectiveness and memory latency.
 
 ---
 
+## Project Phases
 
+This project was developed incrementally:
 
+1. **Phase 1:** L1 cache simulation and hit/miss tracking
+2. **Phase 2:** Two-level cache hierarchy (L1 + L2)
+3. **Final Phase:** Full memory hierarchy including main memory and virtual memory with page faults
+
+Each phase builds upon the previous one to gradually introduce more realistic system behavior.
+
+---
 
