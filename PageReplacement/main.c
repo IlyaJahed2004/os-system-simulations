@@ -168,6 +168,88 @@ void lruPageReplacement(int pages[], int n, int frame_count) {
 }
 
 
+void optimalPageReplacement(int pages[], int n, int frame_count) {
+    int *frames = (int *)malloc(sizeof(int) * frame_count);
+    for (int i = 0; i < frame_count; i++)
+        frames[i] = -1;
+
+    int pageFaults = 0;
+
+    for (int i = 0; i < n; i++) {
+        int page = pages[i];
+        bool page_in_mem = false;
+
+        // Check if page is already in memory
+        for (int j = 0; j < frame_count; j++) {
+            if (frames[j] == page) {
+                page_in_mem = true;
+                break;
+            }
+        }
+
+        printf("Access page %d: ", page);
+
+        if (page_in_mem) {
+            printf("page_in_mem\t");
+            printFramesInt(frames, frame_count);
+            printf("\n");
+            continue;
+        }
+
+        // Page fault occurs
+        pageFaults++;
+
+        // Check for empty frame
+        int emptyIndex = -1;
+        for (int j = 0; j < frame_count; j++) {
+            if (frames[j] == -1) {
+                emptyIndex = j;
+                break;
+            }
+        }
+
+        if (emptyIndex != -1)
+        {
+            frames[emptyIndex] = page;
+        }
+        else
+        {
+            int replaceIndex = -1;  //this is the index of the frame which its page will be replaced with the page now we have on the reference string.
+            int farthest = -1;    //from all the pages we have in the frames this will be updated to the page that will be referenced in the farthest future.
+
+            // Find the page with farthest next use
+            for (int j = 0; j < frame_count; j++) {  //at the end of this loop we will have the final replaceindex and farthest variables value.
+                int nextUse;
+                for (nextUse = i + 1; nextUse < n; nextUse++) {
+                    if (frames[j] == pages[nextUse])
+                        break;    //if we find a page which will be referenced in the future ,we save its index which is nextuse variable(index shows the time which it will be reference in the future)
+                }
+
+                if (nextUse >= n) {     // this is the case that we have found the best candidate frame the page we have to be replaced here.(no need to check other pages in the frames so we break)
+                    replaceIndex = j;
+                    break;  
+                }
+
+                if (nextUse > farthest) {   //this is the time we update the two variables (farthest and replaceindex so we can update them on the next iterations of the loop)
+                    farthest = nextUse;
+                    replaceIndex = j;
+                }
+            }
+
+            if (replaceIndex == -1)
+                replaceIndex = 0;
+
+            frames[replaceIndex] = page;
+        }
+
+        printf("PAGE FAULT\t");
+        printFramesInt(frames, frame_count);
+        printf("\n");
+    }
+
+    printf("Total Page Faults = %d\n", pageFaults);
+    free(frames);
+}
 
 // MAIN FUNCTION
 int main() {
@@ -181,8 +263,8 @@ int main() {
     printf("\nLRU Algorithm:\n");
     lruPageReplacement(pages, n, frame_count);
 
-    // printf("\nOptimal Algorithm:\n");
-    // optimalPageReplacement(pages, n, frame_count);
+    printf("\nOptimal Algorithm:\n");
+    optimalPageReplacement(pages, n, frame_count);
 
     return 0;
 }

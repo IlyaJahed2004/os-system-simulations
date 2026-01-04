@@ -62,3 +62,29 @@ A global `timeCounter` is incremented on every page access.
 2. Else → replace the page with the **smallest last_used value**
 
 ---
+
+## Stage 3: FIFO, LRU, and Optimal Page Replacement
+
+This final stage completes the project by implementing the **Optimal Page Replacement** algorithm.
+
+---
+
+##  Optimal Algorithm Overview
+
+The Optimal algorithm replaces the page that will be **used farthest in the future**.
+
+### Key Characteristics:
+- Produces the **minimum possible page faults**
+- Requires future knowledge (not practical in real systems)
+- Used as a theoretical benchmark
+
+---
+
+##  Implementation Logic
+
+For each page fault:
+1. Check when each page in memory will be used next
+2. If a page is **never used again**, replace it immediately
+3. Otherwise, replace the page with the **farthest future use**
+
+---
