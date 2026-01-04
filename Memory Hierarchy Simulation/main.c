@@ -12,6 +12,7 @@ typedef struct {
     int address;
     int valid;
     int access_time;
+    unsigned long last_access_time; 
 } MemoryBlock;
 
 typedef struct {
@@ -19,152 +20,179 @@ typedef struct {
     MemoryBlock l2_cache[CACHE_L2_SIZE];
     MemoryBlock main_memory[MAIN_MEMORY_SIZE];
     MemoryBlock virtual_memory[VIRTUAL_MEMORY_SIZE];
-    
+
     int l1_hits;
     int l1_misses;
     int l2_hits;
     int l2_misses;
     int page_faults;
+
+    unsigned long counter; 
 } MemoryHierarchy;
 
 // Initialize memory hierarchy
 void initializeMemory(MemoryHierarchy *mh) {
-    // Initialize L1 Cache
-    for(int i = 0; i < CACHE_L1_SIZE; i++) {
+    for (int i = 0; i < CACHE_L1_SIZE; i++) {
         mh->l1_cache[i].valid = 0;
-        mh->l1_cache[i].access_time = 1; // 1 cycle
-        mh->l1_cache[i].data = 0;
+        mh->l1_cache[i].access_time = 1;
+        mh->l1_cache[i].last_access_time = 0;
         mh->l1_cache[i].address = -1;
+        mh->l1_cache[i].data = 0;
     }
-    
-    // Initialize L2 Cache
-    for(int i = 0; i < CACHE_L2_SIZE; i++) {
+
+    for (int i = 0; i < CACHE_L2_SIZE; i++) {
         mh->l2_cache[i].valid = 0;
-        mh->l2_cache[i].access_time = 10; // 10 cycles
-        mh->l2_cache[i].data = 0;
+        mh->l2_cache[i].access_time = 10;
+        mh->l2_cache[i].last_access_time = 0;
         mh->l2_cache[i].address = -1;
+        mh->l2_cache[i].data = 0;
     }
-    
-    // Initialize Main Memory with a resident working set
-    // We treat main memory slots as "resident" for addresses 0..MAIN_MEMORY_SIZE-1 initially.
-    for(int i = 0; i < MAIN_MEMORY_SIZE; i++) {
+
+    for (int i = 0; i < MAIN_MEMORY_SIZE; i++) {
         mh->main_memory[i].data = rand() % 1000;
-        mh->main_memory[i].address = i; // first 1K virtual pages are resident
-        mh->main_memory[i].valid = 1;
-        mh->main_memory[i].access_time = 100; // 100 cycles
+        mh->main_memory[i].address = i;
+        mh->main_memory[i].valid = 1; 
+        mh->main_memory[i].access_time = 100;
+        mh->main_memory[i].last_access_time = 0;
     }
-    
-    // Initialize Virtual Memory with backing data
-    for(int i = 0; i < VIRTUAL_MEMORY_SIZE; i++) {
+
+    for (int i = 0; i < VIRTUAL_MEMORY_SIZE; i++) {
         mh->virtual_memory[i].data = rand() % 1000;
         mh->virtual_memory[i].address = i;
         mh->virtual_memory[i].valid = 1;
-        mh->virtual_memory[i].access_time = 1000; // 1000 cycles
+        mh->virtual_memory[i].access_time = 1000;
+        mh->virtual_memory[i].last_access_time = 0;
     }
-    
-    mh->l1_hits = 0;
-    mh->l1_misses = 0;
-    mh->l2_hits = 0;
-    mh->l2_misses = 0;
-    mh->page_faults = 0;
+
+    mh->l1_hits = mh->l1_misses = mh->l2_hits = mh->l2_misses = mh->page_faults = 0;
+    mh->counter = 0;
 }
 
-// Memory access function
+int getLRUVictim(MemoryBlock cache[], int size) {
+    for (int i = 0; i < size; i++) {
+        if (!cache[i].valid) return i;
+    }
+    // here if all the slots are valid we should pick smallest last_access_time
+    int victim = 0;
+    unsigned long min_time = cache[0].last_access_time;
+    for (int i = 1; i < size; i++) {
+        if (cache[i].last_access_time < min_time) {
+            min_time = cache[i].last_access_time;
+            victim = i;
+        }
+    }
+    return victim;
+}
+
+// Memory access function which is LRU-based in this version
 int accessMemory(MemoryHierarchy *mh, int address, int data) {
     int total_time = 0;
+    mh->counter++;
 
-    // --- Full hierarchy logic (L1 -> L2 -> Main -> Virtual) ---
-    // We model direct-mapped caches and direct-mapped main memory slots.
-    // Each probe pays that level's access_time even if it's a miss (simulating tag check cost).
-
-    // L1 probe
-    int l1_idx = address % CACHE_L1_SIZE;
-    total_time += mh->l1_cache[l1_idx].access_time;
-
-    // If valid and tag matches -> L1 hit
-    if (mh->l1_cache[l1_idx].valid && mh->l1_cache[l1_idx].address == address) {
-        mh->l1_hits++;
-        // Simulate write-allocate/write-through: update stored block
-        mh->l1_cache[l1_idx].data = data;
-        return total_time;
+    //  L1 probe
+    total_time += 1; 
+    int l1_hit = -1;
+    for (int i = 0; i < CACHE_L1_SIZE; i++) {
+        if (mh->l1_cache[i].valid && mh->l1_cache[i].address == address) {
+            l1_hit = i;
+            break;
+        }
     }
 
-    // L1 miss
+    if (l1_hit != -1) {
+        mh->l1_hits++;
+        mh->l1_cache[l1_hit].last_access_time = mh->counter;
+        mh->l1_cache[l1_hit].data = data; 
+        return total_time;
+    }
     mh->l1_misses++;
 
-    // L2 probe
-    int l2_idx = address % CACHE_L2_SIZE;
-    total_time += mh->l2_cache[l2_idx].access_time;
-
-    if (mh->l2_cache[l2_idx].valid && mh->l2_cache[l2_idx].address == address) {
-        // L2 hit: bring into L1 (direct-mapped replacement)
-        mh->l2_hits++;
-
-        mh->l1_cache[l1_idx].valid = 1;
-        mh->l1_cache[l1_idx].address = address;
-        mh->l1_cache[l1_idx].data = mh->l2_cache[l2_idx].data;
-
-        // Update with requested data (simulate a write)
-        mh->l1_cache[l1_idx].data = data;
-        return total_time;
+    //L2 probe 
+    total_time += 10; 
+    int l2_hit = -1;
+    for (int i = 0; i < CACHE_L2_SIZE; i++) {
+        if (mh->l2_cache[i].valid && mh->l2_cache[i].address == address) {
+            l2_hit = i;
+            break;
+        }
     }
 
-    // L2 miss
+    
+    int l1_target = getLRUVictim(mh->l1_cache, CACHE_L1_SIZE);
+
+    if (l2_hit != -1) {
+        mh->l2_hits++;
+        mh->l2_cache[l2_hit].last_access_time = mh->counter;
+
+        // bring into L1
+        mh->l1_cache[l1_target] = mh->l2_cache[l2_hit];
+        mh->l1_cache[l1_target].last_access_time = mh->counter;
+        mh->l1_cache[l1_target].access_time = 1;
+        mh->l1_cache[l1_target].valid = 1;
+        mh->l1_cache[l1_target].data = data; 
+        return total_time;
+    }
     mh->l2_misses++;
 
-    // Main memory probe (check if resident)
-    int mm_idx = address % MAIN_MEMORY_SIZE;
-    total_time += mh->main_memory[mm_idx].access_time;
+    //  Main memory probe 
+    total_time += 100;
+    int mm_index = -1;
+    for (int i = 0; i < MAIN_MEMORY_SIZE; i++) {
+        if (mh->main_memory[i].valid && mh->main_memory[i].address == address) {
+            mm_index = i;
+            break;
+        }
+    }
 
-    if (mh->main_memory[mm_idx].valid && mh->main_memory[mm_idx].address == address) {
-        // Found in main memory: fill L2 then L1
-        mh->l2_cache[l2_idx].valid = 1;
-        mh->l2_cache[l2_idx].address = address;
-        mh->l2_cache[l2_idx].data = mh->main_memory[mm_idx].data;
+    int l2_target = getLRUVictim(mh->l2_cache, CACHE_L2_SIZE);
 
-        mh->l1_cache[l1_idx].valid = 1;
-        mh->l1_cache[l1_idx].address = address;
-        mh->l1_cache[l1_idx].data = mh->l2_cache[l2_idx].data;
+    if (mm_index != -1) {
+        mh->main_memory[mm_index].last_access_time = mh->counter;
 
-        // simulate write
-        mh->l1_cache[l1_idx].data = data;
-        return total_time;
-    } else {
-        // Page fault: bring from virtual backing store
-        mh->page_faults++;
+        // bring to L2
+        mh->l2_cache[l2_target] = mh->main_memory[mm_index];
+        mh->l2_cache[l2_target].last_access_time = mh->counter;
+        mh->l2_cache[l2_target].access_time = 10;
+        mh->l2_cache[l2_target].valid = 1;
 
-        int vm_idx = address % VIRTUAL_MEMORY_SIZE;
-        // cost to read from virtual backing store (slow)
-        total_time += mh->virtual_memory[vm_idx].access_time;
-
-        // Install into main memory slot (overwrite simple model)
-        mh->main_memory[mm_idx].valid = 1;
-        mh->main_memory[mm_idx].address = address;
-        mh->main_memory[mm_idx].data = mh->virtual_memory[vm_idx].data;
-
-        // cost to access main after swap-in
-        total_time += mh->main_memory[mm_idx].access_time;
-
-        // Fill L2 and L1 (write-allocate)
-        mh->l2_cache[l2_idx].valid = 1;
-        mh->l2_cache[l2_idx].address = address;
-        mh->l2_cache[l2_idx].data = mh->main_memory[mm_idx].data;
-
-        mh->l1_cache[l1_idx].valid = 1;
-        mh->l1_cache[l1_idx].address = address;
-        mh->l1_cache[l1_idx].data = mh->l2_cache[l2_idx].data;
-
-        // simulate write with provided data
-        mh->l1_cache[l1_idx].data = data;
-
+        // bring to L1
+        mh->l1_cache[l1_target] = mh->main_memory[mm_index];
+        mh->l1_cache[l1_target].last_access_time = mh->counter;
+        mh->l1_cache[l1_target].access_time = 1;
+        mh->l1_cache[l1_target].valid = 1;
+        mh->l1_cache[l1_target].data = data; 
         return total_time;
     }
 
-    // unreachable
+    //  Page fault
+    mh->page_faults++;
+    int vm_index = address % VIRTUAL_MEMORY_SIZE;
+    total_time += mh->virtual_memory[vm_index].access_time;
+
+    int mm_target = getLRUVictim(mh->main_memory, MAIN_MEMORY_SIZE);
+
+    // swapping the page into main memory
+    mh->main_memory[mm_target] = mh->virtual_memory[vm_index];
+    mh->main_memory[mm_target].address = address;
+    mh->main_memory[mm_target].last_access_time = mh->counter;
+    mh->main_memory[mm_target].access_time = 100;
+    mh->main_memory[mm_target].valid = 1;
+
+    // now bring into L2 and L1
+    mh->l2_cache[l2_target] = mh->main_memory[mm_target];
+    mh->l2_cache[l2_target].last_access_time = mh->counter;
+    mh->l2_cache[l2_target].access_time = 10;
+    mh->l2_cache[l2_target].valid = 1;
+
+    mh->l1_cache[l1_target] = mh->main_memory[mm_target];
+    mh->l1_cache[l1_target].last_access_time = mh->counter;
+    mh->l1_cache[l1_target].access_time = 1;
+    mh->l1_cache[l1_target].valid = 1;
+    mh->l1_cache[l1_target].data = data; 
+
     return total_time;
 }
 
-// Print memory statistics
 void printMemoryStats(MemoryHierarchy *mh) {
     printf("\nMemory Access Statistics:\n");
     printf("L1 Cache Hits: %d\n", mh->l1_hits);
@@ -188,15 +216,14 @@ int main() {
     MemoryHierarchy mh;
     srand(time(NULL));
     initializeMemory(&mh);
-    
+
     int total_accesses = 1000;
     int total_time = 0;
-    int working_set = 256; // encourage locality
-    
-    for(int i = 0; i < total_accesses; i++) {
-        // 90% of the time stay within a small working set to produce cache hits
+    int working_set = 256;
+
+    for (int i = 0; i < total_accesses; i++) {
         int address;
-        if(rand() % 10 < 9) {
+        if (rand() % 10 < 9) {
             address = rand() % working_set;
         } else {
             address = rand() % VIRTUAL_MEMORY_SIZE;
@@ -204,10 +231,10 @@ int main() {
         int data = rand() % 1000;
         total_time += accessMemory(&mh, address, data);
     }
-    
+
     printMemoryStats(&mh);
     printf("\nTotal Access Time: %d cycles\n", total_time);
     printf("Average Access Time: %.2f cycles\n", (float)total_time / total_accesses);
-    
+
     return 0;
 }
