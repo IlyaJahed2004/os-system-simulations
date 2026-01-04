@@ -19,7 +19,7 @@ typedef struct {    //Used in LRU algorithm
 
 
 //Helper function for logging the memory status each time a page is referenced
-void printFramesInt(int frames[], int frame_count) {
+void Frames_Logger(int frames[], int frame_count) {
     printf("[");
     for (int i = 0; i < frame_count; i++) {
         if (frames[i] == -1)
@@ -61,7 +61,7 @@ void fifoPageReplacement(int pages[], int n, int frame_count) {
 
         if (page_in_mem) {
             printf("this page is in memory\t");
-            printFramesInt(q.frames, q.frame_count);
+            Frames_Logger(q.frames, q.frame_count);
             printf("\n");
             continue;   // no need to execute the rest of the code in the main loop because the page is found.
         }
@@ -77,7 +77,7 @@ void fifoPageReplacement(int pages[], int n, int frame_count) {
             q.filled_frames_count++;
 
         printf("PAGE FAULT\t");
-        printFramesInt(q.frames, q.frame_count);
+        Frames_Logger(q.frames, q.frame_count);
         printf("\n");
     }
 
@@ -118,7 +118,7 @@ void lruPageReplacement(int pages[], int n, int frame_count) {
             int frames_currentstatus[frame_count];
             for (int k = 0; k < frame_count; k++)
                 frames_currentstatus[k] = frames[k].page_num;
-            printFramesInt(frames_currentstatus, frame_count);
+            Frames_Logger(frames_currentstatus, frame_count);
             printf("\n");
             continue;
         }
@@ -159,7 +159,7 @@ void lruPageReplacement(int pages[], int n, int frame_count) {
             frames_currentstatus[k] = frames[k].page_num;
 
         printf("PAGE FAULT\t");
-        printFramesInt(frames_currentstatus, frame_count);
+        Frames_Logger(frames_currentstatus, frame_count);
         printf("\n");
     }
 
@@ -191,7 +191,7 @@ void optimalPageReplacement(int pages[], int n, int frame_count) {
 
         if (page_in_mem) {
             printf("page_in_mem\t");
-            printFramesInt(frames, frame_count);
+            Frames_Logger(frames, frame_count);
             printf("\n");
             continue;
         }
@@ -243,7 +243,7 @@ void optimalPageReplacement(int pages[], int n, int frame_count) {
         }
 
         printf("PAGE FAULT\t");
-        printFramesInt(frames, frame_count);
+        Frames_Logger(frames, frame_count);
         printf("\n");
     }
 
