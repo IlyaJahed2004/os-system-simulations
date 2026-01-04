@@ -17,10 +17,10 @@ typedef struct {
     MemoryBlock* head;
     size_t total_size;
     size_t free_size;
-    int allocation_strategy; // 1: First Fit, 2: Best Fit, 3: Worst Fit
+    int allocation_strategy;
 } MemoryManager;
 
-/* Initialize memory manager with a single free block */
+// Initialize manager 
 MemoryManager* initMemoryManager(size_t size, int strategy) {
     MemoryManager* manager = (MemoryManager*)malloc(sizeof(MemoryManager));
     if (!manager) return NULL;
@@ -37,47 +37,47 @@ MemoryManager* initMemoryManager(size_t size, int strategy) {
     return manager;
 }
 
-/* First Fit: return first free block that fits */
+// Selection functions 
 MemoryBlock* firstFit(MemoryManager* manager, size_t size) {
     MemoryBlock* cur = manager->head;
-    while (cur) {
-        if (!cur->is_allocated && cur->size >= size) return cur;
-        cur = cur->next;
+    while (cur)
+    {
+        if (!cur->is_allocated && cur->size >= size)
+            return cur; cur = cur->next;
     }
     return NULL;
 }
-
-/* Best Fit: return smallest free block that fits */
-MemoryBlock* bestFit(MemoryManager* manager, size_t size) {
-    MemoryBlock* cur = manager->head;
-    MemoryBlock* best = NULL;
-    while (cur) {
-        if (!cur->is_allocated && cur->size >= size) {
-            if (!best || cur->size < best->size) best = cur;
+MemoryBlock* bestFit(MemoryManager* manager, size_t size)
+{
+    MemoryBlock* cur = manager->head; MemoryBlock* best = NULL;
+    while (cur)
+    {
+        if(!cur->is_allocated && cur->size >= size)
+        {
+            if (!best || cur->size < best->size)
+                best = cur;
         }
         cur = cur->next;
     }
     return best;
 }
-
-/* Worst Fit: return largest free block that fits */
-MemoryBlock* worstFit(MemoryManager* manager, size_t size) {
-    MemoryBlock* cur = manager->head;
-    MemoryBlock* worst = NULL;
-    while (cur) {
-        if (!cur->is_allocated && cur->size >= size) {
-            if (!worst || cur->size > worst->size) worst = cur;
+MemoryBlock* worstFit(MemoryManager* manager, size_t size)
+{
+    MemoryBlock* cur = manager->head; MemoryBlock* worst = NULL;
+    while (cur)
+    { 
+        if (!cur->is_allocated && cur->size >= size)
+        {
+            if (!worst || cur->size > worst->size)
+            worst = cur;
         }
         cur = cur->next;
     }
     return worst;
 }
 
-/* Allocate memory based on selected strategy.
-   If chosen block is much larger than requested and leftover >= MIN_PARTITION_SIZE,
-   split the block into allocated + free leftover.
-*/
-void* allocateMemory(MemoryManager* manager, size_t size)
+// Allocate with splitting 
+void* allocateMemory(MemoryManager* manager, size_t size) 
 {
     if (!manager) return NULL;
     if (size < MIN_PARTITION_SIZE) return NULL;
@@ -92,14 +92,12 @@ void* allocateMemory(MemoryManager* manager, size_t size)
     }
     if (!target) return NULL;
 
-    // If the block is much larger, split it
     if (target->size > size + MIN_PARTITION_SIZE) {
         MemoryBlock* leftover = (MemoryBlock*)malloc(sizeof(MemoryBlock));
         leftover->size = target->size - size;
         leftover->start_address = target->start_address + size;
         leftover->is_allocated = false;
         leftover->next = target->next;
-
         target->size = size;
         target->next = leftover;
     }
@@ -109,9 +107,9 @@ void* allocateMemory(MemoryManager* manager, size_t size)
     return (void*)(uintptr_t)target->start_address;
 }
 
-/* Deallocate: mark block free and increase free_size.
-   Note: merging of adjacent free blocks will be handled by compaction in Phase 3. */
-void deallocate(MemoryManager* manager, void* address) {
+/* Deallocate */
+void deallocate(MemoryManager* manager, void* address) 
+{
     if (!manager) return;
     size_t addr = (size_t)(uintptr_t)address;
     MemoryBlock* cur = manager->head;
@@ -126,8 +124,47 @@ void deallocate(MemoryManager* manager, void* address) {
     printf("Error: invalid address %zu\n", addr);
 }
 
-/* Print current memory layout */
-void printMemory(MemoryManager* manager) {
+
+void compactMemory(MemoryManager* manager) 
+{
+    if (!manager) return;
+    size_t next_addr = 0;
+    MemoryBlock* cur = manager->head;
+    MemoryBlock* new_head = NULL;
+    MemoryBlock* tail = NULL;
+
+    // Collect allocated blocks and relocate them to front
+    while (cur) {
+        if (cur->is_allocated) {
+            MemoryBlock* nb = (MemoryBlock*)malloc(sizeof(MemoryBlock));
+            nb->size = cur->size;
+            nb->start_address = next_addr;
+            nb->is_allocated = true;
+            nb->next = NULL;
+            next_addr += nb->size;
+            if (!new_head) new_head = nb; else tail->next = nb;
+            tail = nb;
+        }
+        cur = cur->next;
+    }
+
+    // Append a single free block with remaining memory
+    if (next_addr < manager->total_size) {
+        MemoryBlock* freeb = (MemoryBlock*)malloc(sizeof(MemoryBlock));
+        freeb->size = manager->total_size - next_addr;
+        freeb->start_address = next_addr;
+        freeb->is_allocated = false;
+        freeb->next = NULL;
+        if (!new_head) new_head = freeb; else tail->next = freeb;
+    }
+
+    // Replace old list with new compacted list
+    manager->head = new_head;
+}
+
+// Print layout
+void printMemory(MemoryManager* manager) 
+{
     MemoryBlock* cur = manager->head;
     printf("[Memory Layout]: ");
     while (cur) {
@@ -140,11 +177,11 @@ void printMemory(MemoryManager* manager) {
     printf("NULL\n");
 }
 
-/* Demo: run the same scenario for each strategy */
+
 int main() {
     const char* names[] = {"First Fit", "Best Fit", "Worst Fit"};
     for (int s = 1; s <= 3; ++s) {
-        printf("\n=== Strategy %d: %s ===\n", s, names[s-1]);
+        printf("\n============== Strategy %d: %s ============== \n", s, names[s-1]);
         MemoryManager* mm = initMemoryManager(MAX_MEMORY_SIZE, s);
 
         printf("Allocating A:200, B:200, C:200\n");
@@ -161,7 +198,11 @@ int main() {
         allocateMemory(mm, 100);
         printMemory(mm);
 
-        free(mm); // demo cleanup
+        printf("\nCompacting memory\n");
+        compactMemory(mm);
+        printMemory(mm);
+
+        free(mm);
     }
     return 0;
 }

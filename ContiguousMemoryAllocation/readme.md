@@ -29,4 +29,15 @@ Implemented features:
 - Deallocation (marks block free)
 - Logging of memory layout to observe fragmentation behavior
 
-How to compile:
+
+# Contiguous Memory Allocator — Phase 3 (Compaction)
+
+Phase 3 finalizes the simulator by adding memory compaction: allocated blocks are relocated to the beginning of memory and free space is merged into a single block.
+
+Features:
+- First Fit, Best Fit, Worst Fit strategies
+- Block splitting on allocation
+- Deallocation
+- Memory compaction (relocate allocated blocks + merge remaining free space)
+- Logging to observe fragmentation and the effect of compaction
+
