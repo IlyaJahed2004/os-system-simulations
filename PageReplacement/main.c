@@ -86,6 +86,88 @@ void fifoPageReplacement(int pages[], int n, int frame_count) {
 }
 
 
+void lruPageReplacement(int pages[], int n, int frame_count) {
+    PageFrame *frames = (PageFrame *)malloc(sizeof(PageFrame) * frame_count);
+    // this is initialization:
+    for (int i = 0; i < frame_count; i++) {
+        frames[i].page_num = -1;     // Empty frame
+        frames[i].last_used = 0;
+    }
+
+    int timeCounter = 0;
+    int pageFaults = 0;
+
+    for (int i = 0; i < n; i++) {
+        int page_num = pages[i];
+        timeCounter++;
+        bool page_in_mem = false;
+
+        // Check if page exists and update access time
+        for (int j = 0; j < frame_count; j++) {
+            if (frames[j].page_num == page_num) {
+                frames[j].last_used = timeCounter;
+                page_in_mem = true;
+                break;
+            }
+        }
+
+        printf("Access page %d: ", page_num);
+
+        if (page_in_mem) {
+            printf("page_in_mem\t");
+            int frames_currentstatus[frame_count];
+            for (int k = 0; k < frame_count; k++)
+                frames_currentstatus[k] = frames[k].page_num;
+            printFramesInt(frames_currentstatus, frame_count);
+            printf("\n");
+            continue;
+        }
+
+        // Page fault occurs
+        pageFaults++;
+
+        // Look for an empty frame
+        int emptyIndex = -1;
+        for (int j = 0; j < frame_count; j++) {
+            if (frames[j].page_num == -1) {
+                emptyIndex = j;
+                break;
+            }
+        }
+
+        if (emptyIndex != -1) {
+            frames[emptyIndex].page_num = page_num;
+            frames[emptyIndex].last_used = timeCounter;
+        } else {
+            // Find least recently used page
+            int lruIndex = 0;
+            int minTime = frames[0].last_used;
+
+            for (int j = 1; j < frame_count; j++) {
+                if (frames[j].last_used < minTime) {
+                    minTime = frames[j].last_used;
+                    lruIndex = j;
+                }
+            }
+
+            frames[lruIndex].page_num = page_num;
+            frames[lruIndex].last_used = timeCounter;
+        }
+
+        int frames_currentstatus[frame_count];
+        for (int k = 0; k < frame_count; k++)
+            frames_currentstatus[k] = frames[k].page_num;
+
+        printf("PAGE FAULT\t");
+        printFramesInt(frames_currentstatus, frame_count);
+        printf("\n");
+    }
+
+    printf("Total Page Faults = %d\n", pageFaults);
+    free(frames);
+}
+
+
 
 // MAIN FUNCTION
 int main() {
@@ -96,8 +178,8 @@ int main() {
     printf("FIFO Algorithm:\n");
     fifoPageReplacement(pages, n, frame_count);
 
-    // printf("\nLRU Algorithm:\n");
-    // lruPageReplacement(pages, n, frame_count);
+    printf("\nLRU Algorithm:\n");
+    lruPageReplacement(pages, n, frame_count);
 
     // printf("\nOptimal Algorithm:\n");
     // optimalPageReplacement(pages, n, frame_count);

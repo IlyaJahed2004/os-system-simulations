@@ -31,3 +31,34 @@ Each page access prints:
 - The current state of memory frames
 
 ---
+
+## Stage 2: FIFO + LRU Page Replacement
+
+This stage extends the project by adding the **LRU (Least Recently Used)** page replacement algorithm alongside FIFO.
+
+---
+
+##  LRU Algorithm Overview
+
+LRU replaces the page that has **not been used for the longest time**.
+
+### Key Characteristics:
+- More efficient than FIFO
+- Tracks access history
+- Approximates real-world memory behavior
+
+---
+
+##  Implementation Details
+
+Each memory frame stores:
+- `page_num` → page number
+- `last_used` → timestamp of last access
+
+A global `timeCounter` is incremented on every page access.
+
+### On Page Fault:
+1. If an empty frame exists → insert page
+2. Else → replace the page with the **smallest last_used value**
+
+---
