@@ -1,7 +1,11 @@
 ERROR | 2024-05-01 11:00:00 | authentication failed
+
 ERROR | 2024-05-01 10:01:00 | base failure
+
 ERROR | 2024-05-01 12:00:00 | payment timeout
+
 ERROR | 2024-05-01 12:01:00 | invalid card
+
 auth.txt: 1 bugs
 base.txt: 1 bugs
 payment.txt: 1 bugs
