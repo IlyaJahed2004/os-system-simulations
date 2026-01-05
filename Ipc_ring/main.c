@@ -7,147 +7,230 @@
 #include <semaphore.h>
 #include <fcntl.h>
 
-#define SHM_KEY 0x1111
-#define NUM_PUS 8
-#define MAILBOX_SIZE 8
-#define NUM_PRIMES 10
+// Constants 
+
+#define SHARED_MEM_KEY     0x3456
+#define NUM_PROCESS_UNITS  8
+#define NUM_PRIMES         100
+#define MAILBOX_CAPACITY   8
+#define RESULT_CAPACITY    200
 
 
 typedef struct {
-    int value;
-    int counter;
-} prime_t;
-
+    int value;      
+    int counter;    
+} pipeline_item_t;
 
 typedef struct {
-    prime_t mailbox[NUM_PUS][MAILBOX_SIZE];
-    int head[NUM_PUS];
-    int tail[NUM_PUS];
-} shared_mem_t;
+    pipeline_item_t inbox[NUM_PROCESS_UNITS][MAILBOX_CAPACITY];
+    int inbox_head[NUM_PROCESS_UNITS];
+    int inbox_tail[NUM_PROCESS_UNITS];
 
-
-
+    pipeline_item_t results[RESULT_CAPACITY];
+    int result_head;
+    int result_tail;
+} shared_data_t;
 
 // Prime Generator
-int is_prime(int x) {
-    if (x < 2) return 0;
-    for (int i = 2; i * i <= x; i++)
-        if (x % i == 0) return 0;
-    return 1;
+void generate_primes(int count, int *buffer) {
+    int found = 0;
+    int number = 2;
+
+    while (found < count) {
+        int is_prime = 1;
+        for (int i = 2; i * i <= number; i++) {
+            if (number % i == 0) {
+                is_prime = 0;
+                break;
+            }
+        }
+
+        if (is_prime) {
+            buffer[found++] = number;
+            printf("[PARENT] found prime %d\n", number);
+            fflush(stdout);
+        }
+        number++;
+    }
 }
 
 
-
 int main() {
-    int shmid = shmget(SHM_KEY, sizeof(shared_mem_t), IPC_CREAT | 0666);
-    shared_mem_t *shm = shmat(shmid, NULL, 0);
 
-    for (int i = 0; i < NUM_PUS; i++)
-        shm->head[i] = shm->tail[i] = 0;
+    setbuf(stdout, NULL);
 
-    // Semaphores 
+    // Shared Memory Setup
 
-    sem_t *empty[NUM_PUS], *full[NUM_PUS], *mutex[NUM_PUS];
-    char name[64];
+    int shm_id = shmget(SHARED_MEM_KEY, sizeof(shared_data_t), IPC_CREAT | 0666);
+    shared_data_t *shared = shmat(shm_id, NULL, 0);
 
-    for (int i = 0; i < NUM_PUS; i++) {
-        sprintf(name, "/p1_empty_%d", i);
-        sem_unlink(name);
-        empty[i] = sem_open(name, O_CREAT, 0666, MAILBOX_SIZE);
+    for (int i = 0; i < NUM_PROCESS_UNITS; i++)
+        shared->inbox_head[i] = shared->inbox_tail[i] = 0;
 
-        sprintf(name, "/p1_full_%d", i);
-        sem_unlink(name);
-        full[i] = sem_open(name, O_CREAT, 0666, 0);
+    shared->result_head = shared->result_tail = 0;
 
-        sprintf(name, "/p1_mutex_%d", i);
-        sem_unlink(name);
-        mutex[i] = sem_open(name, O_CREAT, 0666, 1);
+    // Mailbox Semaphores
+
+    sem_t *inbox_empty[NUM_PROCESS_UNITS];
+    sem_t *inbox_full[NUM_PROCESS_UNITS];
+    sem_t *inbox_mutex[NUM_PROCESS_UNITS];
+    char sem_name[64];
+
+    for (int i = 0; i < NUM_PROCESS_UNITS; i++) {
+
+        sprintf(sem_name, "/inbox_empty_%d", i);
+        sem_unlink(sem_name);
+        inbox_empty[i] = sem_open(sem_name, O_CREAT, 0666, MAILBOX_CAPACITY);
+
+        sprintf(sem_name, "/inbox_full_%d", i);
+        sem_unlink(sem_name);
+        inbox_full[i] = sem_open(sem_name, O_CREAT, 0666, 0);
+
+        sprintf(sem_name, "/inbox_mutex_%d", i);
+        sem_unlink(sem_name);
+        inbox_mutex[i] = sem_open(sem_name, O_CREAT, 0666, 1);
     }
 
-    //Fork PU Processes
+    // Result Buffer Semaphores
 
-    for (int pu = 0; pu < NUM_PUS; pu++) {
+    sem_unlink("/result_empty");
+    sem_unlink("/result_full");
+    sem_unlink("/result_mutex");
+
+    sem_t *result_empty = sem_open("/result_empty", O_CREAT, 0666, RESULT_CAPACITY);
+    sem_t *result_full  = sem_open("/result_full",  O_CREAT, 0666, 0);
+    sem_t *result_mutex = sem_open("/result_mutex", O_CREAT, 0666, 1);
+
+    // Spawn Processing Units
+
+    for (int pu_id = 0; pu_id < NUM_PROCESS_UNITS; pu_id++) {
+
         if (fork() == 0) {
-            int id = pu;
+
+            printf("[PU %d] started\n", pu_id);
 
             while (1) {
-                sem_wait(full[id]);
-                sem_wait(mutex[id]);
 
-                prime_t item = shm->mailbox[id][shm->tail[id]];
-                shm->tail[id] = (shm->tail[id] + 1) % MAILBOX_SIZE;
+                sem_wait(inbox_full[pu_id]);
+                sem_wait(inbox_mutex[pu_id]);
 
-                sem_post(mutex[id]);
-                sem_post(empty[id]);
+                pipeline_item_t item =
+                    shared->inbox[pu_id][shared->inbox_tail[pu_id]];
+                shared->inbox_tail[pu_id] =
+                    (shared->inbox_tail[pu_id] + 1) % MAILBOX_CAPACITY;
+
+                sem_post(inbox_mutex[pu_id]);
+                sem_post(inbox_empty[pu_id]);
 
                 if (item.counter == -1)
                     break;
 
-                item.value += id;
+                item.value += pu_id;
                 item.counter--;
 
-                printf("PU %d: value=%d counter=%d\n",
-                       id, item.value, item.counter);
-                fflush(stdout);
+                if (item.counter > 0) {
 
-                int next = (id + 1) % NUM_PUS;
+                    int next_pu = (pu_id + 1) % NUM_PROCESS_UNITS;
 
-                sem_wait(empty[next]);
-                sem_wait(mutex[next]);
+                    sem_wait(inbox_empty[next_pu]);
+                    sem_wait(inbox_mutex[next_pu]);
 
-                shm->mailbox[next][shm->head[next]] = item;
-                shm->head[next] = (shm->head[next] + 1) % MAILBOX_SIZE;
+                    shared->inbox[next_pu][shared->inbox_head[next_pu]] = item;
+                    shared->inbox_head[next_pu] =
+                        (shared->inbox_head[next_pu] + 1) % MAILBOX_CAPACITY;
 
-                sem_post(mutex[next]);
-                sem_post(full[next]);
+                    sem_post(inbox_mutex[next_pu]);
+                    sem_post(inbox_full[next_pu]);
+
+                    printf("[PU %d] forwarded value=%d counter=%d to PU %d\n",
+                           pu_id, item.value, item.counter, next_pu);
+                } else {
+
+                    sem_wait(result_empty);
+                    sem_wait(result_mutex);
+
+                    shared->results[shared->result_head] = item;
+                    shared->result_head =
+                        (shared->result_head + 1) % RESULT_CAPACITY;
+
+                    sem_post(result_mutex);
+                    sem_post(result_full);
+
+                    printf("[PU %d] finished value=%d\n", pu_id, item.value);
+                }
             }
 
-            shmdt(shm);
+            shmdt(shared);
             exit(0);
         }
     }
 
-    // Parent: Send Primes
+    //Parent: Send Initial Primes
 
-    int sent = 0;
-    for (int x = 2; sent < NUM_PRIMES; x++) {
-        if (!is_prime(x)) continue;
+    int primes[NUM_PRIMES];
+    generate_primes(NUM_PRIMES, primes);
 
-        prime_t p;
-        p.value = x;
-        p.counter = x;
+    for (int i = 0; i < NUM_PRIMES; i++) {
 
-        int target = x % NUM_PUS;
+        int prime = primes[i];
+        int target_pu = prime % NUM_PROCESS_UNITS;
 
-        sem_wait(empty[target]);
-        sem_wait(mutex[target]);
+        sem_wait(inbox_empty[target_pu]);
+        sem_wait(inbox_mutex[target_pu]);
 
-        shm->mailbox[target][shm->head[target]] = p;
-        shm->head[target] = (shm->head[target] + 1) % MAILBOX_SIZE;
+        shared->inbox[target_pu][shared->inbox_head[target_pu]] =
+            (pipeline_item_t){ .value = prime, .counter = prime };
 
-        sem_post(mutex[target]);
-        sem_post(full[target]);
+        shared->inbox_head[target_pu] =
+            (shared->inbox_head[target_pu] + 1) % MAILBOX_CAPACITY;
 
-        sent++;
+        sem_post(inbox_mutex[target_pu]);
+        sem_post(inbox_full[target_pu]);
+
+        usleep(500);
     }
 
-    // Termination
+    //Parent: Collect Results
 
-    for (int i = 0; i < NUM_PUS; i++) {
-        sem_wait(empty[i]);
-        sem_wait(mutex[i]);
+    for (int i = 0; i < NUM_PRIMES; i++) {
 
-        shm->mailbox[i][shm->head[i]].counter = -1;
-        shm->head[i] = (shm->head[i] + 1) % MAILBOX_SIZE;
+        sem_wait(result_full);
+        sem_wait(result_mutex);
 
-        sem_post(mutex[i]);
-        sem_post(full[i]);
+        pipeline_item_t result =
+            shared->results[shared->result_tail];
+
+        shared->result_tail =
+            (shared->result_tail + 1) % RESULT_CAPACITY;
+
+        sem_post(result_mutex);
+        sem_post(result_empty);
+
+        printf("[RESULT %2d] final value = %d\n", i + 1, result.value);
     }
 
-    for (int i = 0; i < NUM_PUS; i++)
+    //Shutdown Processing Units
+
+    for (int i = 0; i < NUM_PROCESS_UNITS; i++) {
+
+        sem_wait(inbox_empty[i]);
+        sem_wait(inbox_mutex[i]);
+
+        shared->inbox[i][shared->inbox_head[i]] =
+            (pipeline_item_t){ .counter = -1 };
+
+        shared->inbox_head[i] =
+            (shared->inbox_head[i] + 1) % MAILBOX_CAPACITY;
+
+        sem_post(inbox_mutex[i]);
+        sem_post(inbox_full[i]);
+    }
+
+    for (int i = 0; i < NUM_PROCESS_UNITS; i++)
         wait(NULL);
 
-    shmdt(shm);
-    shmctl(shmid, IPC_RMID, NULL);
+    shmdt(shared);
+    shmctl(shm_id, IPC_RMID, NULL);
+
     return 0;
 }
