@@ -1,147 +1,66 @@
-# Log Analyzer – Phase 1
+# Log Analyzer – Phase 2
 
 ## Overview
-This project is a simple log analyzer implemented in C as part of a System Programming assignment.
+Phase 2 completes the log analyzer by enforcing **dependency-aware execution order**.
 
-Phase 1 focuses on the core system programming concepts:
-- Parsing structured log files using Regular Expressions
-- Concurrent processing using `fork()`
-- Inter-process communication using `pipe()`
-- Basic handling of file dependencies
-- Detecting malformed log entries (bugs)
+While Phase 1 only respected dependencies during output generation, Phase 2 ensures that log files are processed in a correct logical order based on their declared dependencies.
 
-The implementation prioritizes simplicity, readability, and correctness over advanced optimizations.
+The overall architecture remains the same, but execution order is improved.
 
 ---
 
-## Log File Format
-Each log file contains text lines. A valid log line must strictly follow this format:
+## Key Difference from Phase 1
 
-LEVEL | YYYY-MM-DD HH:MM:SS | Message
+### Phase 1
+- All log files are processed concurrently
+- Dependencies affect only output order
 
-makefile
-Copy code
-
-Example:
-ERROR | 2024-01-15 10:42:01 | Disk read failure
-
-yaml
-Copy code
-
-Supported severity levels:
-- `ERROR`
-- `INFO`
-- `WARNING`
+### Phase 2
+- Log files are sorted **before forking**
+- Dependencies affect both execution and output
+- A file is processed only after its dependency
 
 ---
 
-## Dependency Declaration
-A log file may declare a dependency in its **first line** using the following syntax:
+## Dependency Enforcement
+Before creating child processes:
+- All discovered log files are sorted using dependency information
+- If file A depends on file B, file B is processed first
 
-... other_file.txt
-
-yaml
-Copy code
-
-This means that the current log file depends on `other_file.txt`.
-
-In **Phase 1**, dependencies are:
-- Detected and stored
-- Used only to control **output order**
-- **Not enforced during execution**
+This ensures:
+- Correct logical processing order
+- Deterministic execution behavior
 
 ---
 
-## Program Architecture
+## Execution Flow (Phase 2)
 
-### Global Data
-- All discovered log files are stored in a global `files[]` array
-- Each entry stores:
-  - File name
-  - Full path
-  - Dependency (if any)
-  - Pipe file descriptors
-  - Bug count
+1. Discover all log files
+2. Read dependency declarations
+3. Sort files based on dependencies
+4. Create pipes and fork workers in sorted order
+5. Collect logs and bug reports
+6. Generate final output
 
 ---
 
-## Execution Flow
-
-### 1. Initialization
-- Configuration values are set (target severity, logs directory, output file)
-- A regular expression is compiled to validate log format
-
----
-
-### 2. File Discovery
-- The program scans the `logs/` directory
-- All `.txt` files are discovered
-- For each file:
-  - Filename and full path are stored
-  - The first line is checked for a dependency declaration
+## Worker Logic
+The worker logic remains unchanged:
+- Reads a single file
+- Skips dependency declaration line
+- Validates logs using regex
+- Sends matching logs and bug count to the parent
 
 ---
 
-### 3. Concurrent Processing
-For each discovered file:
-- A pipe is created
-- A child process is created using `fork()`
-
-Each **child process**:
-- Opens its assigned log file
-- Skips the dependency declaration line (if present)
-- Validates each log line using regex
-- Sends matching logs to the parent using:
-LOG:<log line>
-
-cpp
-Copy code
-- Counts malformed log lines
-- Sends the final bug count using:
-BUG:<count>
-
-yaml
-Copy code
-
-The **parent process**:
-- Closes unused pipe ends
-- Waits for all child processes to finish
+## Advantages of Phase 2
+- Correct handling of dependent log files
+- Cleaner and more predictable execution
+- Fully satisfies assignment requirements
 
 ---
 
-### 4. Dependency-Based Output Ordering
-After all workers finish:
-- Log files are sorted using a simple bubble sort
-- If file A depends on file B, file B appears first in output
-
----
-
-### 5. Output Generation
-- All `LOG:` messages are written to `output.txt`
-- A bug summary is printed at the bottom of the file in the format:
-filename.txt: X bugs
-
-yaml
-Copy code
-
----
-
-## Output Example
-
-ERROR | 2024-01-15 10:42:01 | Disk read failure
-ERROR | 2024-01-15 11:03:19 | Network timeout
-
-log1.txt: 2 bugs
-log2.txt: 0 bugs
-
-pgsql
-Copy code
-
----
-
-## Limitations of Phase 1
-- Dependencies are not enforced during execution
-- All files are processed concurrently
-- Error handling is minimal by design
-
-These limitations are addressed in Phase 2.
+## Final Notes
+- Phase 2 is the final phase of the assignment
+- The implementation remains simple and readable
+- No additional synchronization mechanisms are required

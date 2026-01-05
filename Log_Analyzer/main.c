@@ -1,4 +1,3 @@
-// phase1.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,7 +44,7 @@ int matches_severity(const char *line, const char *sev) {
     return strncmp(line, sev, strlen(sev)) == 0;
 }
 
-/* ------------ Worker ------------ */
+//  Worker 
 void execute_worker(int idx, const char *severity) {
     LogFile *f = &files[idx];
     close(f->pipe_fd[0]);
@@ -82,7 +81,7 @@ void execute_worker(int idx, const char *severity) {
     exit(0);
 }
 
-/* ------------ Dependency sort (output only) ------------ */
+//  Dependency sort (output only)
 void sort_files_by_dependency() {
     for (int i = 0; i < file_count - 1; i++) {
         for (int j = 0; j < file_count - i - 1; j++) {
@@ -126,7 +125,8 @@ int main() {
     }
     closedir(d);
 
-    /* Fork workers */
+    sort_files_by_dependency();
+
     for (int i = 0; i < file_count; i++) {
         pipe(files[i].pipe_fd);
 
@@ -137,8 +137,6 @@ int main() {
     }
 
     while (wait(NULL) > 0);
-
-    sort_files_by_dependency();
 
     FILE *out = fopen(output, "w");
 
