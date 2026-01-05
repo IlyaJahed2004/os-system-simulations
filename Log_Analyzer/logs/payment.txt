@@ -1,0 +1,4 @@
+...auth.txt
+ERROR | 2024-05-01 12:00:00 | payment timeout
+ERROR | 2024-05-01 12:01:00 | invalid card
+BAD LOG

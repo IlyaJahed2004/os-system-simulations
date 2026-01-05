@@ -1,0 +1,4 @@
+...base.txt
+ERROR | 2024-05-01 11:00:00 | authentication failed
+INVALID LINE
+INFO | 2024-05-01 11:01:00 | user logged in
